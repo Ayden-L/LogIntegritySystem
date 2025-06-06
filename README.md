@@ -39,3 +39,21 @@ This project is relevant for:
 * Digital signatures for entry authorization
 * Integration with syslog
 * Web dashboard for visualization
+
+<h2> Usage </h2>
+
+1. Start by running the makefile to modify the access permissions on log, logserver, and checklog
+2. In one terminal, run the following command: ./logserver
+
+NOTE: The server will then start listening on an available port
+
+3. Then in a separate terminal, you may send data to the server with the following command usage: ./log \<port\> \<message\>
+
+Example (assuming the available port for this instance is 43963): 
+* ./log 43963 "hello world"
+* ./log 43963 "this is a test message"
+* ./log 43963 "server"
+
+NOTE: Two log files are created by the system.
+* log.txt, this will hold each log entry in a \<date\>:\<time\> - \<hash\>= \<message\> format.
+* loghead.txt, will hold the log head of the system, representing a summary or checkpoint used to track the current state of the logging process
