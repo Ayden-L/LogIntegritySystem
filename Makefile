@@ -1,5 +1,5 @@
 all:
-	chmod 755 log logserver b64hash checklog
+	chmod 755 log logserver checklog
 
 clean:
 	rm -f log.txt loghead.txt
