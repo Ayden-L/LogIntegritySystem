@@ -1,0 +1,155 @@
+#!/usr/bin/python3
+import socket
+import hashlib
+import os
+import base64
+from datetime import datetime
+
+def count_leading_zeros(message):
+    hash_int = int.from_bytes(message, 'big')
+
+    leading_zeros = 256 - hash_int.bit_length()
+
+    print(f"hash contains {leading_zeros} leading 0 bits")
+
+def validate_pow(message):
+
+    # hash the message received from log program
+    sha_hash = hashlib.sha256(message.encode('utf-8')).digest()
+
+    print(f"hash(message): {sha_hash}")
+    count_leading_zeros(sha_hash)
+
+    # identify if the first 22 bits are 0s
+    to_int = int.from_bytes(sha_hash[:3], 'big')
+    if to_int >> 2 == 0:
+        return True
+
+    return False
+
+def handle_client(client_socket):
+    try:
+        # use socket file interface to read line by line
+        with client_socket.makefile('r') as client_in, client_socket.makefile('w') as client_out:
+            # receive the string from the client (terminated by a newline)
+            message = client_in.readline().strip()
+            print(f"Received: {message}")
+
+            # strip any white space (including new line characters)
+            message = message.strip()
+
+            # validate the PoW in the message:
+            validate = validate_pow(message)
+            if validate is False:
+                print("logserver error: invalid PoW")
+
+            # find the ":" that separates the PoW and the message
+            index = message.find(':')
+            if index == -1:
+                print("logserver error: Invalid string from server. \":\" not recognized in input string")
+            
+            # strip the PoW from the message
+            message = message[index+1:]
+
+            # check if log.txt is missing
+            log_path = "log.txt"
+            loghead_path = "loghead.txt"
+
+            # if both files do not exist, create new files log.txt and loghead.txt
+            if (not os.path.exists(log_path) and not os.path.exists(loghead_path)):
+                log_file                    = open(log_path, "w")
+                loghead_file                = open(loghead_path, "w")
+
+            # if log.txt DOES NOT exist and loghead.txt DOES create a new log.txt
+            elif (not os.path.exists(log_path) and os.path.exists(loghead_path)):
+                log_file                    = open(log_path, "w")
+
+            # if log.txt DOES exist, but loghead.txt DOES NOT, then we have no way of trusting log.txt, so throw error
+            elif os.path.exists(log_path) and not os.path.exists(loghead_path):
+
+                response                    = "Server response: error: loghead.txt missing but log.txt exists\n"
+                client_out.write(response)
+                client_out.flush()
+                
+                # return and wait for next interaction from client
+                return
+            
+            # if both files already exist, read from both of them
+            else:
+                log_file                    = open(log_path, "a")
+                loghead_file                = open(loghead_path, "r")
+
+
+            with open(loghead_path, "r") as loghead_file:
+                # read the hash value from loghead.txt
+                head_pointer = loghead_file.readline()
+
+            with open(log_path, "r") as read_log_file:
+                test_line = read_log_file.readline()
+
+            # if loghead.txt is not empty or loghead.txt DOES NOT exsist, AND log.txt does NOT exist:
+            if head_pointer == "" and test_line != "":
+                response                    = "Server response: error: loghead.txt missing but log.txt exists\n"
+                client_out.write(response)
+                client_out.flush()
+
+                return
+            elif head_pointer == "" and test_line == "":    
+                head_pointer = "start"
+            
+
+            # create the log entry:
+            iso_time = datetime.now().isoformat()
+            log_entry = f"{iso_time} - {head_pointer} {message}"
+
+            # append the received string to log.txt
+            log_file.write(log_entry + "\n")
+            print(f"logging: \"{log_entry}\"")
+
+            # compute the hash of the log_entry:
+            sha_hash = hashlib.sha256(log_entry.encode('utf-8')).digest()
+
+            # encode the sha_hash in base64
+            base64_hash = base64.b64encode(sha_hash).decode('utf-8')
+            print(f"b64 hash = \"{base64_hash}\"")
+            
+            # take the last 24 characters of the base64_hash:
+            base64_hash_string = base64_hash[-24:]
+            print(f"last 24 bytes of the b64-encoded hash = \"{base64_hash_string}\"")
+
+            # write hash to loghead.txt
+            with open(loghead_path, "w") as loghead_file_out:
+                loghead_file_out.write(base64_hash_string)
+
+            # send a response message back to the client (terminated by a newline)
+            response = "ok\n"
+            client_out.write(response)
+            client_out.flush()
+
+    except Exception as e:
+        print(f"logserver: {e}")
+        response = "Server side error, unable to parse input\n"
+        client_out.write(response)
+        client_out.flush()
+    finally:
+        client_socket.close()
+
+def start_server():
+    # create a socket and bind it to any available port
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(('0.0.0.0', 0))  # bind to any available port
+    server_socket.listen(5)
+
+    # get the port number and print it
+    port = server_socket.getsockname()[1]
+    print(f"Server listening on port {port}")
+
+    # continuously accept and handle clients
+    while True:
+        client_socket, addr = server_socket.accept()
+        print(f"Accepted connection from {addr}")
+        handle_client(client_socket)
+
+if __name__ == "__main__":
+    start_server()
+

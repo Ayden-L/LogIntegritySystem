@@ -1,0 +1,80 @@
+#!/usr/bin/python3
+import socket
+import hashlib
+import os
+import base64
+from datetime import datetime
+
+
+
+def main():
+
+    log_file_path           = "log.txt"
+    loghead_file_path       = "loghead.txt"
+
+    # open the log.txt file
+    try:
+        log_file = open(log_file_path, "r")
+    except FileNotFoundError as error:
+        print(f"failed: {log_file_path} not found")
+        return 1
+
+    # open the loghead.txt file
+    try:
+        loghead_file = open(loghead_file_path, "r")
+    except FileNotFoundError as error:
+        print(f"failed: {loghead_file_path} not found")
+        return 1
+
+    head_pointer = loghead_file.readline()
+    if head_pointer == "":
+        print(f"failed: No head pointer found in {loghead_file_path}")
+        return 1
+
+    
+    current = log_file.readline().strip()       # current holds the first line
+    parts = current.strip().split()             # splits into parts for check
+    
+    # check the first lines hash
+    hash_check = parts[2]
+    if hash_check != "start":
+        print(f"failed: Invalid log.txt format, \"start\" not found at line 1")
+        return 1
+
+    line = 1
+    while current:
+        
+        current = current.strip()
+        # compute the b64 encoded representation of the last 24 characters of the SHA-256 hash of the line
+        sha256_hash = hashlib.sha256(current.encode('utf-8')).digest()
+        b64_hash = base64.b64encode(sha256_hash).decode('utf-8')
+        b64_string = b64_hash[-24:]
+
+        # read the next line of the file
+        next_line = log_file.readline()
+        if not next_line:
+            # if we're at the last line of the file --> break
+            break 
+
+        # if there is a next line, break it up into parts
+        parts = next_line.strip().split()
+        hash_check = parts[2]
+
+        current = next_line
+        line += 1
+
+        if hash_check != b64_string:
+            print(f"failed: {log_file_path} integrity compromised, hash mismatch on line {line}")
+            print(f"\texpected hash for line {line}: {b64_string}, actual hash on {line}: {hash_check}")
+            return 1
+
+
+    if head_pointer != b64_string:
+        print(f"failed: head pointer and hash mismatch on line {line} in {log_file_path}")
+        return 1
+
+    print("Valid")
+    return 0
+
+if __name__ == "__main__":
+    main()

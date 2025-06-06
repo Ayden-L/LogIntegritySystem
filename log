@@ -1,0 +1,80 @@
+#!/usr/bin/python3
+import socket
+import sys
+import hashlib
+import string
+import itertools
+
+# prepend a string so that the SHA-256 hash of the COMPLETE message will start with 22 bits containing 0
+def proof_of_work(message):
+
+    allow_chars = string.ascii_letters + string.digits
+    prefix_len  = 1
+    iterations = 0
+    # we iterate trying different prefixes to this string, checking the hash output
+    while True:
+
+        for prefix in itertools.product(allow_chars, repeat=prefix_len):
+            
+            iterations += 1 # count the number of iterations it takes to find the right prefix
+
+            # generate a prefix string
+            prefix = ''.join(prefix)
+
+            # compute the SHA-256 hash of the message
+            sha256_hash = hashlib.sha256((prefix + ":" + message).encode('utf-8')).digest()
+
+            # convert the hash from byte form to integer form
+            to_int = int.from_bytes(sha256_hash[:3], 'big')
+            # if to_int >> 2 == 0: # if the first 22 bits are 
+            if to_int < 4: # checks if AT LEAST 22 leading bits are 0
+
+                print(f"took {iterations} iterations to find compatible string")
+
+                # return a string of the format: "prefix:message" that satisifies the requirement of 22 leading 0 bits
+                return prefix + ":" + message
+
+        # if no prefix string has been found, increase the length of prefix strings:
+        prefix_len += 1
+
+
+def send_string_to_server(port, message):
+    try:
+        # connect to the server
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect(('localhost', port))
+
+        ######################
+        # convert any whitespace to spaces
+        # modify the messsage to include the proof-of-work (Pow+':'+message)
+        ######################
+
+        message = message.strip().split()
+        message = ' '.join(message)
+        message = proof_of_work(message)
+ 
+        with client_socket.makefile('r') as server_in, client_socket.makefile('w') as server_out:
+            
+            print(f"sending: {message}")
+
+            # send the message to the server, terminated by a newline
+            server_out.write(message + "\n")
+            server_out.flush()
+
+            # receive and print the confirmation message from the server
+            response = server_in.readline().strip()
+            print(f"Server response: {response}")
+
+    except Exception as e:
+        print(f"Error communicating with server: {e}")
+    finally:
+        client_socket.close()
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: log <port> <message>")
+    else:
+        port = int(sys.argv[1])
+        message = sys.argv[2]
+        send_string_to_server(port, message)
+
